@@ -4,8 +4,10 @@
       switch (request.name) {
       case "getPreferences":
         var value = localStorage["mode"];
-        if (!value) { value = "default"; };
-        sendResponse({mode: value});
+		if (!value) { value = "default"; };
+		let modValue = localStorage['modifier'];
+		if (!modValue) { modValue = 'default'; }
+        sendResponse({mode: value, modifier: modValue});
         break;
       }
     }

@@ -12,7 +12,9 @@
    function save_options()
     {
       var select = document.getElementById("mode");
-      localStorage["mode"] = select.value;
+	  localStorage["mode"] = select.value;
+	  const modifierSelect = document.getElementById('modifier');
+	  localStorage['modifier'] = modifierSelect.value;
       var status = document.getElementById("status");
       status.innerHTML = "Settings have been saved.";
       setTimeout(function(e) {
@@ -24,7 +26,11 @@
     {
       var mode = localStorage["mode"];
       if (!mode) { return; }
-      var select = document.getElementById("mode");
-      select.value = mode;
+	  var select = document.getElementById("mode");
+	  const modifier = localStorage['modifier'];
+	  if (!modifier) { return; }
+	  const modifierSelect = document.getElementById('modifier');
+	  select.value = mode;
+	  modifierSelect.value = modifier;
     }
 })(document);
