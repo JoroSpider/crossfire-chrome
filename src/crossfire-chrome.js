@@ -3,18 +3,27 @@
 // @namespace    http://d.hatena.ne.jp/mallowlabs/
 // ==/UserScript==
 
-(function (document) {
+(document => {
 
 	const DEFAULT_BINDINGS = { DOWN: 'ArrowDown', UP: 'ArrowUp', LEFT: 'ArrowLeft', RIGHT: 'ArrowRight' }
 	const VI_BINDINGS = { DOWN: 'j', UP: 'k', LEFT: 'h', RIGHT: 'l' }
 
-	const A_TAG = A_TAG;
+	const CONTROL_KEY = 'Control';
+	const SHIFT_KEY = 'Shift';
+
+	const A_TAG = 'A';
+	const ROOT = 'HTML';
+	const BODY = document.body;
+	const VERTICAL_MOVE = false;
+	const HORIZONTAL_MOVE = true;
 	const DIRECTION = {
-		UP: { axis: false, move: -1 },
-		DOWN: { axis: false, move: 1 },
-		LEFT: { axis: true, move: -1 },
-		RIGHT: { axis: true, move: 1 }
+		UP: { axis: VERTICAL_MOVE, move: -1 },
+		DOWN: { axis: VERTICAL_MOVE, move: 1 },
+		LEFT: { axis: HORIZONTAL_MOVE, move: -1 },
+		RIGHT: { axis: HORIZONTAL_MOVE, move: 1 }
 	};
+	const IS_LINKS = true;
+	const IS_WAKES = false;
 
 	var KEY = {};
 
@@ -33,17 +42,12 @@
 			if (!modifier) { modifier = 'default'; }
 			switch (modifier) {
 				case 'control':
-					KEY.MODIFIER = 'Control';
+					KEY.MODIFIER = CONTROL_KEY;
 					break;
 				default:
-					KEY.MODIFIER = 'Shift';
+					KEY.MODIFIER = SHIFT_KEY;
 			}
 
-			var xlinks = [];
-			var ylinks = [];
-			// var modifierPressed = false;
-			let links = [];
-			let wakes = [];
 			var CROSSFIRE_CHROME_FOCUS = "crossfire-chrome-focus";
 
 			addStyle(".crossfire-chrome-focus:focus {outline: 2px solid #6baee6;}");
@@ -57,201 +61,156 @@
 				heads[0].appendChild(node);
 			}
 
-			const addLink = link => links.push({ link: link, x: getCenter(link.getBoundingClientRect()).x, y: getCenter(link.getBoundingClientRect()).y });
+			let links = [];
+			let wakes = [];
 
-			Array.from(document.getElementsByTagName(A_TAG)).filter(a => a.href && isVisible(a)).forEach(a => addLink(a));
+			const getCenter = link => {
+				const rect = link.getBoundingClientRect();
+				return { x: rect.left + (rect.width) / 2, y: rect.top + (rect.height) / 2 };
+			};
+
+			const visible = link => {
+				if (link.tagName === ROOT) {
+					return true;
+				}
+				const style = document.defaultView.getComputedStyle(link);
+				if (style.display === 'none' || style.visibility === 'hidden') {
+					return false;
+				}
+				return visible(link.parentElement);
+			}
+
+			const correctPosition = link => {
+				const center = getCenter(link);
+				return { link: link, x: center.x + window.pageXOffset, y: center.y + window.pageYOffset };
+			}
+
+			const targetArray = isLinks => isLinks ? links : wakes;
+
+			const addLink = (link, isLinks) => targetArray(isLinks).push(link);
+
+			const removeLink = (link, isLinks) => targetArray(isLinks) = targetArray(isLinks).filter(a => a !== link);
+			const clearLinks = isLinks => targetArray(isLinks).splice(0);
+
+			const getLinks = isLinks => targetArray(isLinks).filter(link => visible(link)).map(link => correctPosition(link));
+
+			Array.from(document.getElementsByTagName(A_TAG)).filter(a => a.hasAttribute('href')).forEach(a => addLink(a, IS_LINKS));
+			// addLink(links[0].link, IS_WAKES);
 
 			const observer = new MutationObserver(mutations => {
 				observer.disconnect();
 
-				mutations.addedNodes.filter(mutation => mutation.nodeName === A_TAG).forEach(mutation => addLink(mutation));
-				observer.observe(document.body, { childList: true, subtree: true });
+				mutations.forEach(mutation => {
+					Array.from(mutation.addedNodes).filter(node => node.nodeName === A_TAG).forEach(node => addLink(node, IS_LINKS));
+					Array.from(mutation.removedNodes).filter(node => node.nodeName === A_TAG).forEach(node => removeLink(node, IS_LINKS));
+				});
+
+				observer.observe(BODY, { childList: true, subtree: true });
 			});
-			observer.observe(document.body, { childList: true, subtree: true });
+			observer.observe(BODY, { childList: true, subtree: true });
 
-			// function collectRects() {
-			// 	xlinks = []
-			// 	ylinks = []
-			// 	var ns = document.getElementsByTagName(A_TAG) // TODO use XPath
-			// 	for (var i = 0, l = ns.length; i < l; i++) {
-			// 		if (!(ns[i].hasAttribute("href") && isVisible(ns[i]))) {
-			// 			continue; // link which has no href or is not visible should be ignore
-			// 		}
-			// 		var rect = ns[i].getBoundingClientRect();
-			// 		xlinks.push({ dom: ns[i], rect: rect });
-			// 		ylinks.push({ dom: ns[i], rect: rect });
-			// 	}
-			// 	xlinks.sort(function (a, b) { return getCenter(a.rect).x - getCenter(b.rect).x })
-			// 	ylinks.sort(function (a, b) { return getCenter(a.rect).y - getCenter(b.rect).y })
-			// }
+			const canSee = (link, axis) => {
+				const border = getStartAndEnd(link, axis);
+				const target = axis === HORIZONTAL_MOVE ? window.innerHeight : window.innerWidth;
+				return border.start < target && border.end > 0;
+			};
 
-			function getCenter(rect) {
-				return { x: rect.left + (rect.width) / 2, y: rect.top + (rect.height) / 2 };
-			}
+			const canSeeBoth = (link, axis) => canSee(link, axis) && canSee(link, !axis);
 
-			function isVisible(node) {
-				if (node.tagName === 'HTML') {
-					return true;
-				}
-				const style = document.defaultView.getComputedStyle(node);
-				if (style.display === 'none' || style.visibility === 'hidden') {
-					return false;
-				}
-				return isVisible(node.parentNode);
-				// var tmp = node;
-				// while (tmp.tagName != "HTML") {
-				// 	var style = document.defaultView.getComputedStyle(tmp, "");
-				// 	if (style.display == "none" || style.visibility == "hidden") {
-				// 		return false;
-				// 	}
-				// 	tmp = tmp.parentNode;
-				// }
-				// return true;
-			}
-
-			const canSee = (node, isHorizontalMove) => {
-				const center = getCenter(node.getBoundingClientRect());
-				if (isHorizontalMove) {
-					return center.bottom >= window.pageYOffset && center.top <= window.pageYOffset + window.innerHeight;
+			const targetPosition = (link, axis) => {
+				if (axis === VERTICAL_MOVE) {
+					return link.y;
 				} else {
-					return center.right >= window.pageXOffset && center.left <= window.pageXOffset + window.innerWidth;
+					return link.x;
 				}
 			};
 
-			/* FIXME too complex ... */
-			// function isTarget(activeRect, targetRect, axis, direction) {
-			// 	if (axis == "x") {
-			// 		if (direction == 1 && activeRect.right < targetRect.right) {  // right
-			// 			if (targetRect.bottom >= activeRect.top && targetRect.top <= activeRect.bottom) {
-			// 				return (targetRect.left - activeRect.right);
-			// 			} else if ((targetRect.bottom < activeRect.top) &&  // up
-			// 				(targetRect.left - activeRect.right) > (activeRect.top - targetRect.bottom)) {
-			// 				return (targetRect.left - activeRect.right) + (activeRect.top - targetRect.bottom);
-			// 			} else if ((targetRect.top > activeRect.bottom) && // down
-			// 				(targetRect.left - activeRect.right) > (targetRect.top - activeRect.bottom)) {
-			// 				return (targetRect.left - activeRect.right) + (targetRect.top - activeRect.bottom);
-			// 			}
-			// 		} else if (direction == -1 && targetRect.left < activeRect.left) { // left
-			// 			if (targetRect.bottom >= activeRect.top && targetRect.top <= activeRect.bottom) {
-			// 				return (activeRect.left - targetRect.right);
-			// 			} else if ((targetRect.bottom < activeRect.top) && // up
-			// 				(activeRect.left - targetRect.right) > (activeRect.top - targetRect.bottom)) {
-			// 				return (activeRect.left - targetRect.right) + (activeRect.top - targetRect.bottom);
-			// 			} else if ((targetRect.top > activeRect.bottom) && // down
-			// 				(activeRect.left - targetRect.right) > (targetRect.top - activeRect.bottom)) {
-			// 				return (activeRect.left - targetRect.right) + (targetRect.top - activeRect.bottom);
-			// 			}
-			// 		}
-			// 	} else if (axis == "y") {
-			// 		if (direction == 1 && activeRect.bottom < targetRect.bottom) {  // down
-			// 			if (activeRect.left <= targetRect.right && targetRect.left <= activeRect.right) {
-			// 				return (targetRect.top - activeRect.bottom);
-			// 			} else if ((targetRect.right < activeRect.left) && // left
-			// 				(activeRect.left - targetRect.right) < (targetRect.top - activeRect.bottom)) {
-			// 				return (targetRect.top - activeRect.bottom) + (activeRect.left - targetRect.right);
-			// 			} else if ((targetRect.left > activeRect.right) && // right
-			// 				(targetRect.left - activeRect.right) < (targetRect.top - activeRect.bottom)) {
-			// 				return (targetRect.top - activeRect.bottom) + (targetRect.left - activeRect.right);
-			// 			}
-			// 		} else if (direction == -1 && targetRect.top < activeRect.top) {  // up
-			// 			if (targetRect.right >= activeRect.left && targetRect.left <= activeRect.right) {
-			// 				return (activeRect.top - targetRect.bottom);
-			// 			} else if ((targetRect.right < activeRect.left) && // left
-			// 				(activeRect.left - targetRect.right) < (activeRect.top - targetRect.bottom)) {
-			// 				return (activeRect.top - targetRect.bottom) + (activeRect.left - targetRect.right);
-			// 			} else if ((targetRect.left > activeRect.right) && // right
-			// 				(targetRect.left - activeRect.right) < (activeRect.top - targetRect.bottom)) {
-			// 				return (activeRect.top - targetRect.bottom) + (targetRect.left - activeRect.right);
-			// 			}
-			// 		}
-			// 	}
-			// 	return -1;
-			// }
-
-			const sortLinks = (first, second, direction) => {
-				if (first > second) {
-					return direction;
-				} else if (first < second) {
-					return -direction;
-				} else {
-					return 0;
+			const getStartAndEnd = (link, axis, direction) => {
+				const rect = link.getBoundingClientRect();
+				if (!direction) {
+					direction = 1;
 				}
-			}
-
-			const reduceOne = (first, second, last) => {
-				if (last && first - last > second - last) {
-					return second;
+				if (axis === VERTICAL_MOVE) {
+					return ++direction ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
 				} else {
+					return ++direction ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
+				}
+			};
+
+			const overlapped = (link, current, axis) => {
+				const targetParallel = getStartAndEnd(link.link, axis);
+				const currentParallel = getStartAndEnd(current.link, axis);
+				return targetParallel.start < currentParallel.end && targetParallel.end > currentParallel.start;
+			};
+
+			const getDistance = (source, destination) =>
+				Math.sqrt(((source.x - destination.x) ** 2) + ((source.y - destination.y) ** 2));
+
+			const getDegree = (link, current, axis) =>
+				Math.atan2(Math.abs(targetPosition(link, !axis) - targetPosition(current, !axis)),
+					Math.abs(targetPosition(link, axis) - targetPosition(current, axis)));
+
+			const getMinDegreedItem = (first, second, current, axis) =>
+				getDegree(first, current, axis) > getDegree(second, current, axis) ? second : first;
+
+			const decideNext = (first, second, current, axis) => {
+				if (canSeeBoth(first.link, axis) && !canSeeBoth(second.link, axis)) {
 					return first;
+				} else if (!canSeeBoth(first.link, axis) && canSeeBoth(second.link, axis)) {
+					return second;
+				} else if (!canSeeBoth(first.link, axis) && !canSeeBoth(second.link, axis)) {
+					return getMinDegreedItem(first, second, current, axis);
+				} else {
+					if (overlapped(first, current, axis) && !overlapped(second, current, axis)) {
+						return first;
+					} else if (!overlapped(first, current, axis) && overlapped(second, current, axis)) {
+						return second;
+					} else if (overlapped(first, current, axis) && overlapped(second, current, axis)) {
+						return Math.abs(targetPosition(first, axis) - targetPosition(current, axis))
+							> Math.abs(targetPosition(second, axis) - targetPosition(current, axis)) ? second : first;
+					} else {
+						const firstBorder = getStartAndEnd(first.link, axis);
+						const secondBorder = getStartAndEnd(second.link, axis);
+						if (firstBorder.start === secondBorder.start || firstBorder.end === secondBorder.end) {
+							return getDistance(current, first) > getDistance(current, second) ? second : first;
+						} else {
+							return getMinDegreedItem(first, second, current, axis);
+						}
+					}
 				}
-			}
+			};
+
+
+			const getCurrentLink = () => {
+				let current = document.activeElement;
+				if (current.tagName === A_TAG && canSeeBoth(current, true)) {
+					return correctPosition(current);
+				} else {
+					link = { x: window.pageXOffset, y: window.pageYOffset };
+					return getLinks(IS_LINKS).reduce((now, another) => {
+						if (getDistance(link, now) > getDistance(link, another)) {
+							return another;
+						} else {
+							return now;
+						}
+					});
+				}
+			};
 
 			const navigate = direction => {
-				// const current = wakes.length > 0 ? wakes.slice(-1)[0] : document.activeElement;
-				const current = document.activeElement.getBoundingClientRect();
-				let candidates;
-				let target;
-				switch (direction) {
-					case DIRECTION.UP:
-					case DIRECTION.DOWN:
-						candidates = (
-							direction === DIRECTION.UP ?
-								links.filter(link => link.y > getCenter(current).y) :
-								links.filter(link => link.y < getCenter(current).y)
-						).sort((first, second) => sortLinks(first.y, second.y, directon.move));
-						target = candidates.filter(link => link.y === candidates.find(link => canSee(link, direction.axis).y))
-							.reduce((first, second) => reduceOne(first.y, second.y, wakes.slice(-1)[0].y));
-						// target = candidates.sort((first, second) => sortLinks(first.y, second.y, directon.move))
-						// 		.find(link => canSee(link, direction.axis));
-						break;
-					case DIRECTION.LEFT:
-					case DIRECTION.RIGHT:
-						candidates = (
-							direction === DIRECTION.LEFT ?
-								links.filter(link => link.x > getCenter(current).x) :
-								links.filter(link => link.x < getCenter(current).x)
-						).sort((first, second) => sortLinks(first.x, second.x, direction.move));
-						target = candidates.filter(link => link.x === candidates.find(link => canSee(link, direction.axis).x))
-							.reduce((first, second) => reduceOne(first.x, second.x, wakes.slice(-1)[0].x));
-						// target = candidates.sort((first, second) => sortLinks(first.x, second.x, direction.move))
-						// 		.find(link => canSee(link, direction.axis));
-						break;
-				}
-				if (target) {
-					const rect = target.getBoundingClientRect();
-					wakes.push({ link: target, x: getCenter(rect).x, y: getCenter(rect).y });
-					focus(target);
+				const current = getCurrentLink();
+				const candidates = getLinks(IS_LINKS)
+					.filter(link => Math.sign(targetPosition(link, direction.axis) - targetPosition(current, direction.axis))
+						=== direction.move);
+				if (candidates.length > 0) {
+					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction.axis));
+					const targetBorder = getStartAndEnd(target.link, !direction.axis);
+					const currentBorder = getStartAndEnd(current.link, !direction.axis);
+					if (targetBorder.start !== currentBorder.start && targetBorder.end !== currentBorder.end) {
+						focus(target.link);
+					}
 				}
 			}
-
-			// function navigateNext(links, axis, direction) {
-			// 	var active = document.activeElement;
-			// 	var ignore = false;
-			// 	var activeRect = { left: -100, right: -100, top: -200, bottom: -100 };
-			// 	if (active.tagName == A_TAG) {
-			// 		ignore = true;
-			// 		activeRect = active.getBoundingClientRect();
-			// 	}
-			// 	var start = (direction == 1) ? 0 : links.length - 1;
-			// 	var minDistance = -1;
-			// 	var nearestNode = null;
-			// 	for (var i = start, l = links.length; 0 <= i && i < l; i += direction) {
-			// 		if (!ignore) {
-			// 			var distance = isTarget(activeRect, links[i].rect, axis, direction);
-			// 			if (distance < 0) continue;
-			// 			if (minDistance < 0 || distance < minDistance) {
-			// 				minDistance = distance;
-			// 				nearestNode = links[i].dom;
-			// 			}
-			// 		}
-			// 		if (links[i].dom == document.activeElement) { //XXX want to use 'active' but not works ...
-			// 			ignore = false;
-			// 		}
-			// 	}
-			// 	if (nearestNode) {
-			// 		focus(nearestNode);
-			// 	}
-			// }
 
 			function focus(node) {
 				node.classList.add(CROSSFIRE_CHROME_FOCUS);
@@ -262,35 +221,6 @@
 				node.focus();
 			}
 
-			function navigateRight() {
-				// navigateNext(xlinks, "x", 1);
-				navigate(DIRECTION.RIGHT);
-			}
-			function navigateLeft() {
-				// navigateNext(xlinks, "x", -1);
-				navigate(DIRECTION.LEFT);
-			}
-			function navigateDown() {
-				// navigateNext(ylinks, "y", 1);
-				navigate(DIRECTION.DOWN);
-			}
-			function navigateUp() {
-				// navigateNext(ylinks, "y", -1);
-				navigate(DIRECTION.UP);
-			}
-
-			document.addEventListener('keyup', function (e) {
-				if (document.activeElement.tagName == "INPUT"
-					|| document.activeElement.tagName == "TEXTAREA"
-					|| document.activeElement.contentEditable == "true") {
-					return; // ignore
-				}
-				switch (e.key) {
-					case KEY.MODIFIER:
-						modifierPressed = false;
-						break;
-				}
-			}, false);
 			document.addEventListener('keydown', function (e) {
 				if (document.activeElement.tagName == "INPUT"
 					|| document.activeElement.tagName == "TEXTAREA"
@@ -299,31 +229,27 @@
 					return; // ignore
 				}
 				switch (e.key) {
-					// case KEY.MODIFIER:
-					// 	modifierPressed = true;
-					// 	collectRects();
-					// 	break;
 					case KEY.DOWN:
-						if (KEY.MODIFIER == 'Control' && e.ctrlKey || KEY.MODIFIER == 'Shift' && e.shiftKey) {
-							navigateDown();
+						if (KEY.MODIFIER == CONTROL_KEY && e.ctrlKey || KEY.MODIFIER == SHIFT_KEY && e.shiftKey) {
+							navigate(DIRECTION.DOWN);
 							e.preventDefault();
 						}
 						break;
 					case KEY.UP:
-						if (KEY.MODIFIER == 'Control' && e.ctrlKey || KEY.MODIFIER == 'Shift' && e.shiftKey) {
-							navigateUp();
+						if (KEY.MODIFIER == CONTROL_KEY && e.ctrlKey || KEY.MODIFIER == SHIFT_KEY && e.shiftKey) {
+							navigate(DIRECTION.UP);
 							e.preventDefault();
 						}
 						break;
 					case KEY.RIGHT:
-						if (KEY.MODIFIER == 'Control' && e.ctrlKey || KEY.MODIFIER == 'Shift' && e.shiftKey) {
-							navigateRight();
+						if (KEY.MODIFIER == CONTROL_KEY && e.ctrlKey || KEY.MODIFIER == SHIFT_KEY && e.shiftKey) {
+							navigate(DIRECTION.RIGHT);
 							e.preventDefault();
 						}
 						break;
 					case KEY.LEFT:
-						if (KEY.MODIFIER == 'Control' && e.ctrlKey || KEY.MODIFIER == 'Shift' && e.shiftKey) {
-							navigateLeft();
+						if (KEY.MODIFIER == CONTROL_KEY && e.ctrlKey || KEY.MODIFIER == SHIFT_KEY && e.shiftKey) {
+							navigate(DIRECTION.LEFT);
 							e.preventDefault();
 						}
 						break;
@@ -331,13 +257,8 @@
 						break;
 				}
 			}, false);
-			document.addEventListener('scroll', () =>
-				wakes = wakes.filter(wake => canSee(wake, true) && canSee(wake, false)));
-			// document.addEventListener('scroll', function (e) {
-			// 	if (modifierPressed) {
-			// 		collectRects();
-			// 	}
-			// }, false);
+			document.addEventListener('scroll', () => {
+			});
 		});
 })(document);
 
