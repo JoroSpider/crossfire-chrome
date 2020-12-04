@@ -115,7 +115,7 @@
 				return border.start < target && border.end > 0;
 			};
 
-			const canSeeBoth = (link, axis) => canSee(link, axis) && canSee(link, !axis);
+			const canSeeBoth = link => canSee(link, true) && canSee(link, false);
 
 			const targetPosition = (link, axis) => {
 				if (axis === VERTICAL_MOVE) {
@@ -154,11 +154,11 @@
 				getDegree(first, current, axis) > getDegree(second, current, axis) ? second : first;
 
 			const decideNext = (first, second, current, axis) => {
-				if (canSeeBoth(first.link, axis) && !canSeeBoth(second.link, axis)) {
+				if (canSeeBoth(first.link) && !canSeeBoth(second.link)) {
 					return first;
-				} else if (!canSeeBoth(first.link, axis) && canSeeBoth(second.link, axis)) {
+				} else if (!canSeeBoth(first.link) && canSeeBoth(second.link)) {
 					return second;
-				} else if (!canSeeBoth(first.link, axis) && !canSeeBoth(second.link, axis)) {
+				} else if (!canSeeBoth(first.link) && !canSeeBoth(second.link)) {
 					return getMinDegreedItem(first, second, current, axis);
 				} else {
 					if (overlapped(first, current, axis) && !overlapped(second, current, axis)) {
@@ -180,10 +180,9 @@
 				}
 			};
 
-
 			const getCurrentLink = () => {
-				let current = document.activeElement;
-				if (current.tagName === A_TAG && canSeeBoth(current, true)) {
+				const current = document.activeElement;
+				if (current.tagName === A_TAG && canSeeBoth(current)) {
 					return correctPosition(current);
 				} else {
 					link = { x: window.pageXOffset, y: window.pageYOffset };
