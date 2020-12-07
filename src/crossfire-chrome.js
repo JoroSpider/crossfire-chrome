@@ -69,7 +69,7 @@
 				return { x: rect.left + (rect.width) / 2, y: rect.top + (rect.height) / 2 };
 			};
 
-			const visible = link => {
+			const enabled = link => {
 				if (!link) {
 					return false;
 				}
@@ -77,10 +77,10 @@
 					return true;
 				}
 				const style = document.defaultView.getComputedStyle(link);
-				if (style.display === 'none' || style.visibility === 'hidden') {
+				if (style.display === 'none' || style.visibility === 'hidden' || link.disabled) {
 					return false;
 				}
-				return visible(link.parentElement);
+				return enabled(link.parentElement);
 			}
 
 			const correctPosition = link => {
@@ -90,30 +90,31 @@
 
 			const targetArray = isLinks => isLinks ? links : wakes;
 
-			const addLink = (link, isLinks) => targetArray(isLinks).push(link);
+			const addLink = (link, isLinks) => {
+				if (targetArray(isLinks).indexOf(link) === -1) {
+					targetArray(isLinks).push(link);
+				}
+			};
 
-			const removeLink = (link, isLinks) => targetArray(isLinks) = targetArray(isLinks).filter(a => a !== link);
+			const removeLink = (link, isLinks) => targetArray(isLinks).splice(targetArray(isLinks).indexOf(link), 1);
+
 			const clearLinks = isLinks => targetArray(isLinks).splice(0);
 
-			const getLinks = isLinks => targetArray(isLinks).filter(link => visible(link)).map(link => correctPosition(link));
+			const getLinks = isLinks => targetArray(isLinks).filter(link => enabled(link)).map(link => correctPosition(link));
 
-			Array.from(document.getElementsByTagName(A_TAG)).filter(a => a.hasAttribute('href')).forEach(a => addLink(a, IS_LINKS));
+			const collectLinks = (nodes, isLinks) =>
+				Array.from(nodes).filter(a => a.hasAttribute('href')).forEach(a => addLink(a, isLinks));
+
+			collectLinks(document.getElementsByTagName(A_TAG), IS_LINKS);
 			// addLink(links[0].link, IS_WAKES);
 
-			const observer = new MutationObserver(mutations => {
-				observer.disconnect();
-
-				mutations.forEach(mutation => {
-					Array.from(mutation.addedNodes).filter(node => node.nodeName === A_TAG).forEach(node => addLink(node, IS_LINKS));
-					Array.from(mutation.removedNodes).filter(node => node.nodeName === A_TAG).forEach(node => removeLink(node, IS_LINKS));
-				});
-
-				observer.observe(BODY, { childList: true, subtree: true });
-			});
-			observer.observe(BODY, { childList: true, subtree: true });
+			new MutationObserver(() => {
+				clearLinks(IS_LINKS);
+				collectLinks(document.getElementsByTagName(A_TAG), IS_LINKS);
+			}).observe(BODY, { childList: true, subtree: true });
 
 			const canSee = (link, axis) => {
-				const border = getStartAndEnd(link, axis);
+				const border = getBorder(link, axis);
 				const target = axis === HORIZONTAL_MOVE ? window.innerHeight : window.innerWidth;
 				return border.start < target && border.end > 0;
 			};
@@ -128,7 +129,7 @@
 				}
 			};
 
-			const getStartAndEnd = (link, axis, direction) => {
+			const getBorder = (link, axis, direction) => {
 				const rect = link.getBoundingClientRect();
 				if (!direction) {
 					direction = 1;
@@ -141,8 +142,8 @@
 			};
 
 			const overlapped = (link, current, axis) => {
-				const targetParallel = getStartAndEnd(link.link, axis);
-				const currentParallel = getStartAndEnd(current.link, axis);
+				const targetParallel = getBorder(link.link, axis);
+				const currentParallel = getBorder(current.link, axis);
 				return targetParallel.start < currentParallel.end && targetParallel.end > currentParallel.start;
 			};
 
@@ -172,8 +173,8 @@
 						return Math.abs(targetPosition(first, axis) - targetPosition(current, axis))
 							> Math.abs(targetPosition(second, axis) - targetPosition(current, axis)) ? second : first;
 					} else {
-						const firstBorder = getStartAndEnd(first.link, axis);
-						const secondBorder = getStartAndEnd(second.link, axis);
+						const firstBorder = getBorder(first.link, axis);
+						const secondBorder = getBorder(second.link, axis);
 						if (firstBorder.start === secondBorder.start || firstBorder.end === secondBorder.end) {
 							return getDistance(current, first) > getDistance(current, second) ? second : first;
 						} else {
@@ -206,8 +207,8 @@
 						=== direction.move);
 				if (candidates.length > 0) {
 					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction.axis));
-					const targetBorder = getStartAndEnd(target.link, !direction.axis);
-					const currentBorder = getStartAndEnd(current.link, !direction.axis);
+					const targetBorder = getBorder(target.link, !direction.axis);
+					const currentBorder = getBorder(current.link, !direction.axis);
 					if (targetBorder.start !== currentBorder.start && targetBorder.end !== currentBorder.end) {
 						focus(target.link);
 					}
