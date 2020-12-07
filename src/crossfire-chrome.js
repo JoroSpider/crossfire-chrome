@@ -70,6 +70,9 @@
 			};
 
 			const visible = link => {
+				if (!link) {
+					return false;
+				}
 				if (link.tagName === ROOT) {
 					return true;
 				}
