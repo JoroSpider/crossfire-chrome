@@ -13,7 +13,12 @@
 
 	const A_TAG = 'A';
 	const ROOT = 'HTML';
+	const INPUT = 'INPUT';
+	const BUTTON = 'BUTTON';
 	const BODY = document.body;
+	const HIDDEN = 'hidden';
+	const NONE = 'none';
+	const FIXED = 'fixed';
 	const VERTICAL_MOVE = false;
 	const HORIZONTAL_MOVE = true;
 	const DIRECTION = {
@@ -77,7 +82,7 @@
 					return true;
 				}
 				const style = document.defaultView.getComputedStyle(link);
-				if (style.display === 'none' || style.visibility === 'hidden' || link.disabled) {
+				if (style.display === NONE || style.visibility === HIDDEN || style.position === FIXED || link.disabled) {
 					return false;
 				}
 				return enabled(link.parentElement);
@@ -90,11 +95,7 @@
 
 			const targetArray = isLinks => isLinks ? links : wakes;
 
-			const addLink = (link, isLinks) => {
-				if (targetArray(isLinks).indexOf(link) === -1) {
-					targetArray(isLinks).push(link);
-				}
-			};
+			const addLink = (link, isLinks) => targetArray(isLinks).push(link);
 
 			const removeLink = (link, isLinks) => targetArray(isLinks).splice(targetArray(isLinks).indexOf(link), 1);
 
@@ -102,15 +103,19 @@
 
 			const getLinks = isLinks => targetArray(isLinks).filter(link => enabled(link)).map(link => correctPosition(link));
 
-			const collectLinks = (nodes, isLinks) =>
-				Array.from(nodes).filter(a => a.hasAttribute('href')).forEach(a => addLink(a, isLinks));
+			const isTarget = node => (node.nodeName === A_TAG && node.hasAttribute('href'))
+				|| (node.nodeName === INPUT && node.type !== HIDDEN)
+				|| node.nodeName === BUTTON;
 
-			collectLinks(document.getElementsByTagName(A_TAG), IS_LINKS);
+			const collectLinks = (nodes, isLinks) =>
+				Array.from(nodes).filter(node => isTarget(node)).forEach(node => addLink(node, isLinks));
+
+			collectLinks(document.getElementsByTagName('*'), IS_LINKS);
 			// addLink(links[0].link, IS_WAKES);
 
 			new MutationObserver(() => {
 				clearLinks(IS_LINKS);
-				collectLinks(document.getElementsByTagName(A_TAG), IS_LINKS);
+				collectLinks(document.getElementsByTagName('*'), IS_LINKS);
 			}).observe(BODY, { childList: true, subtree: true });
 
 			const canSee = (link, axis) => {
@@ -186,7 +191,7 @@
 
 			const getCurrentLink = () => {
 				const current = document.activeElement;
-				if (current.tagName === A_TAG && canSeeBoth(current)) {
+				if (isTarget(current) && canSeeBoth(current)) {
 					return correctPosition(current);
 				} else {
 					link = { x: window.pageXOffset, y: window.pageYOffset };
