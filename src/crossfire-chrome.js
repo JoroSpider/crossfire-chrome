@@ -12,10 +12,8 @@
 	const SHIFT_KEY = 'Shift';
 
 	const A_TAG = 'A';
-	const ROOT = 'HTML';
 	const INPUT = 'INPUT';
 	const BUTTON = 'BUTTON';
-	const BODY = document.body;
 	const HIDDEN = 'hidden';
 	const NONE = 'none';
 	const FIXED = 'fixed';
@@ -78,7 +76,7 @@
 				if (!link) {
 					return false;
 				}
-				if (link.tagName === ROOT) {
+				if (link === document.documentElement) {
 					return true;
 				}
 				const style = document.defaultView.getComputedStyle(link);
@@ -116,7 +114,7 @@
 			new MutationObserver(() => {
 				clearLinks(IS_LINKS);
 				collectLinks(document.getElementsByTagName('*'), IS_LINKS);
-			}).observe(BODY, { childList: true, subtree: true });
+			}).observe(document.body, { childList: true, subtree: true });
 
 			const canSee = (link, axis) => {
 				const border = getBorder(link, axis);
