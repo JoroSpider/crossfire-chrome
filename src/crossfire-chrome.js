@@ -136,13 +136,13 @@
 
 			const getBorder = (link, axis, direction) => {
 				const rect = link.getBoundingClientRect();
-				if (!direction) {
+				if (direction !== -1) {
 					direction = 1;
 				}
 				if (axis === VERTICAL_MOVE) {
-					return ++direction ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
+					return (direction + 1) ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
 				} else {
-					return ++direction ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
+					return (direction + 1) ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
 				}
 			};
 
@@ -155,6 +155,9 @@
 			const getDistance = (source, destination) =>
 				Math.sqrt(((source.x - destination.x) ** 2) + ((source.y - destination.y) ** 2));
 
+			const getDirectionalDistance = (source, destination, axis) =>
+				Math.abs(targetPosition(source, axis) - targetPosition(destination, axis));
+
 			const getDegree = (link, current, axis) =>
 				Math.atan2(Math.abs(targetPosition(link, !axis) - targetPosition(current, !axis)),
 					Math.abs(targetPosition(link, axis) - targetPosition(current, axis)));
@@ -162,26 +165,30 @@
 			const getMinDegreedItem = (first, second, current, axis) =>
 				getDegree(first, current, axis) > getDegree(second, current, axis) ? second : first;
 
+			const closed = (link, current, axis) => getDegree(link, current, axis) <= Math.atan(1);
+
+			const compare = (parallel, cross, current, axis) =>
+				getDirectionalDistance(current, cross, !axis) > getDirectionalDistance(current, parallel, axis) ? parallel : cross;
+
 			const decideNext = (first, second, current, axis) => {
 				if (canSeeBoth(first.link) && !canSeeBoth(second.link)) {
-					return first;
+					return compare(second, first, current, axis);
 				} else if (!canSeeBoth(first.link) && canSeeBoth(second.link)) {
-					return second;
-				} else if (!canSeeBoth(first.link) && !canSeeBoth(second.link)) {
-					return getMinDegreedItem(first, second, current, axis);
+					return compare(first, second, current, axis);
 				} else {
 					if (overlapped(first, current, axis) && !overlapped(second, current, axis)) {
 						return first;
 					} else if (!overlapped(first, current, axis) && overlapped(second, current, axis)) {
 						return second;
 					} else if (overlapped(first, current, axis) && overlapped(second, current, axis)) {
-						return Math.abs(targetPosition(first, axis) - targetPosition(current, axis))
-							> Math.abs(targetPosition(second, axis) - targetPosition(current, axis)) ? second : first;
+						return getDirectionalDistance(current, first, axis) > getDirectionalDistance(current, second, axis) ?
+							second : first;
 					} else {
 						const firstBorder = getBorder(first.link, axis);
 						const secondBorder = getBorder(second.link, axis);
 						if (firstBorder.start === secondBorder.start || firstBorder.end === secondBorder.end) {
-							return getDistance(current, first) > getDistance(current, second) ? second : first;
+							return getDirectionalDistance(current, first, axis) > getDirectionalDistance(current, second, axis) ?
+								second : first;
 						} else {
 							return getMinDegreedItem(first, second, current, axis);
 						}
@@ -209,14 +216,12 @@
 				const current = getCurrentLink();
 				const candidates = getLinks(IS_LINKS)
 					.filter(link => Math.sign(targetPosition(link, direction.axis) - targetPosition(current, direction.axis))
-						=== direction.move);
+						=== direction.move
+						&& !overlapped(link, current, !direction.axis)
+						&& canSee(link.link, direction.axis));
 				if (candidates.length > 0) {
 					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction.axis));
-					const targetBorder = getBorder(target.link, !direction.axis);
-					const currentBorder = getBorder(current.link, !direction.axis);
-					if (targetBorder.start !== currentBorder.start && targetBorder.end !== currentBorder.end) {
-						focus(target.link);
-					}
+					focus(target.link);
 				}
 			}
 
