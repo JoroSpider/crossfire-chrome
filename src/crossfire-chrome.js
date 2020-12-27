@@ -12,10 +12,9 @@
 	const SHIFT_KEY = 'Shift';
 
 	const A_TAG = 'A';
-	const ROOT = 'HTML';
 	const INPUT = 'INPUT';
 	const BUTTON = 'BUTTON';
-	const BODY = document.body;
+	const SELECT = 'SELECT';
 	const HIDDEN = 'hidden';
 	const NONE = 'none';
 	const FIXED = 'fixed';
@@ -78,7 +77,7 @@
 				if (!link) {
 					return false;
 				}
-				if (link.tagName === ROOT) {
+				if (link === document.documentElement) {
 					return true;
 				}
 				const style = document.defaultView.getComputedStyle(link);
@@ -97,7 +96,7 @@
 
 			const addLink = (link, isLinks) => targetArray(isLinks).push(link);
 
-			const removeLink = (link, isLinks) => targetArray(isLinks).splice(targetArray(isLinks).indexOf(link), 1);
+			// const removeLink = (link, isLinks) => targetArray(isLinks).splice(targetArray(isLinks).indexOf(link), 1);
 
 			const clearLinks = isLinks => targetArray(isLinks).splice(0);
 
@@ -105,7 +104,8 @@
 
 			const isTarget = node => (node.nodeName === A_TAG && node.hasAttribute('href'))
 				|| (node.nodeName === INPUT && node.type !== HIDDEN)
-				|| node.nodeName === BUTTON;
+				|| node.nodeName === BUTTON
+				|| node.nodeName === SELECT;
 
 			const collectLinks = (nodes, isLinks) =>
 				Array.from(nodes).filter(node => isTarget(node)).forEach(node => addLink(node, isLinks));
@@ -116,7 +116,7 @@
 			new MutationObserver(() => {
 				clearLinks(IS_LINKS);
 				collectLinks(document.getElementsByTagName('*'), IS_LINKS);
-			}).observe(BODY, { childList: true, subtree: true });
+			}).observe(document.body, { childList: true, subtree: true });
 
 			const canSee = (link, axis) => {
 				const border = getBorder(link, axis);
@@ -126,7 +126,7 @@
 
 			const canSeeBoth = link => canSee(link, true) && canSee(link, false);
 
-			const targetPosition = (link, axis) => {
+			const getPartOfPosition = (link, axis) => {
 				if (axis === VERTICAL_MOVE) {
 					return link.y;
 				} else {
@@ -136,13 +136,13 @@
 
 			const getBorder = (link, axis, direction) => {
 				const rect = link.getBoundingClientRect();
-				if (!direction) {
+				if (direction !== -1) {
 					direction = 1;
 				}
 				if (axis === VERTICAL_MOVE) {
-					return ++direction ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
+					return direction + 1 ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
 				} else {
-					return ++direction ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
+					return direction + 1 ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
 				}
 			};
 
@@ -153,39 +153,41 @@
 			};
 
 			const getDistance = (source, destination) =>
-				Math.sqrt(((source.x - destination.x) ** 2) + ((source.y - destination.y) ** 2));
+				((source.x - destination.x) ** 2) + ((source.y - destination.y) ** 2);
+
+			const getDirectionalDistance = (source, destination, axis) =>
+				Math.abs(getPartOfPosition(source, axis) - getPartOfPosition(destination, axis));
 
 			const getDegree = (link, current, axis) =>
-				Math.atan2(Math.abs(targetPosition(link, !axis) - targetPosition(current, !axis)),
-					Math.abs(targetPosition(link, axis) - targetPosition(current, axis)));
+				Math.atan2(Math.abs(getPartOfPosition(link, !axis) - getPartOfPosition(current, !axis)),
+					Math.abs(getPartOfPosition(link, axis) - getPartOfPosition(current, axis)));
 
 			const getMinDegreedItem = (first, second, current, axis) =>
 				getDegree(first, current, axis) > getDegree(second, current, axis) ? second : first;
 
-			const decideNext = (first, second, current, axis) => {
-				if (canSeeBoth(first.link) && !canSeeBoth(second.link)) {
-					return first;
-				} else if (!canSeeBoth(first.link) && canSeeBoth(second.link)) {
-					return second;
-				} else if (!canSeeBoth(first.link) && !canSeeBoth(second.link)) {
-					return getMinDegreedItem(first, second, current, axis);
+			const closed = (link, current, axis) => getDegree(link, current, axis) <= Math.atan(1);
+
+			const compareRelation = (parallel, cross, axis) => {
+				if (closed(cross, parallel, axis)) {
+					return cross;
 				} else {
-					if (overlapped(first, current, axis) && !overlapped(second, current, axis)) {
-						return first;
-					} else if (!overlapped(first, current, axis) && overlapped(second, current, axis)) {
-						return second;
-					} else if (overlapped(first, current, axis) && overlapped(second, current, axis)) {
-						return Math.abs(targetPosition(first, axis) - targetPosition(current, axis))
-							> Math.abs(targetPosition(second, axis) - targetPosition(current, axis)) ? second : first;
-					} else {
-						const firstBorder = getBorder(first.link, axis);
-						const secondBorder = getBorder(second.link, axis);
-						if (firstBorder.start === secondBorder.start || firstBorder.end === secondBorder.end) {
-							return getDistance(current, first) > getDistance(current, second) ? second : first;
-						} else {
-							return getMinDegreedItem(first, second, current, axis);
-						}
-					}
+					return parallel;
+				}
+			};
+
+			const getNearer = (first, second, current, axis) =>
+				getDirectionalDistance(current, first, axis) > getDirectionalDistance(current, second, axis) ? second : first;
+
+			const decideNext = (first, second, current, axis) => {
+				const set = [first, second];
+				const closer = getMinDegreedItem(first, second, current, axis);
+				const nearer = getNearer(first, second, current, axis);
+				if (set.every(link => overlapped(link, current, axis))) {
+					return nearer;
+				} else if (set.some(link => overlapped(link, current, axis))) {
+					return set.find(link => overlapped(link, current, axis));
+				} else {
+					return closer === nearer ? closer : compareRelation(closer, nearer, axis);
 				}
 			};
 
@@ -194,6 +196,7 @@
 				if (isTarget(current) && canSeeBoth(current)) {
 					return correctPosition(current);
 				} else {
+					clearLinks(IS_WAKES);
 					link = { x: window.pageXOffset, y: window.pageYOffset };
 					return getLinks(IS_LINKS).reduce((now, another) => {
 						if (getDistance(link, now) > getDistance(link, another)) {
@@ -208,15 +211,14 @@
 			const navigate = direction => {
 				const current = getCurrentLink();
 				const candidates = getLinks(IS_LINKS)
-					.filter(link => Math.sign(targetPosition(link, direction.axis) - targetPosition(current, direction.axis))
-						=== direction.move);
+					.filter(link => Math.sign(getPartOfPosition(link, direction.axis) - getPartOfPosition(current, direction.axis))
+						=== direction.move
+						&& !overlapped(link, current, !direction.axis)
+						&& canSee(link.link, direction.axis));
 				if (candidates.length > 0) {
 					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction.axis));
-					const targetBorder = getBorder(target.link, !direction.axis);
-					const currentBorder = getBorder(current.link, !direction.axis);
-					if (targetBorder.start !== currentBorder.start && targetBorder.end !== currentBorder.end) {
-						focus(target.link);
-					}
+					addLink(target.link, IS_WAKES);
+					focus(target.link);
 				}
 			}
 
@@ -230,7 +232,7 @@
 			}
 
 			document.addEventListener('keydown', function (e) {
-				if (document.activeElement.tagName == "INPUT"
+				if (document.activeElement.tagName === INPUT
 					|| document.activeElement.tagName == "TEXTAREA"
 					|| document.activeElement.contentEditable == "true"
 					|| e.defaultPrevented) {
