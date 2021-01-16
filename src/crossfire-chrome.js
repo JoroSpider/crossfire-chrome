@@ -96,8 +96,6 @@
 
 			const addLink = (link, isLinks) => targetArray(isLinks).push(link);
 
-			// const removeLink = (link, isLinks) => targetArray(isLinks).splice(targetArray(isLinks).indexOf(link), 1);
-
 			const clearLinks = isLinks => targetArray(isLinks).splice(0);
 
 			const getLinks = isLinks => targetArray(isLinks).filter(link => enabled(link)).map(link => getPositionedItem(link));
@@ -111,13 +109,12 @@
 				Array.from(nodes).filter(node => isTarget(node)).forEach(node => addLink(node, isLinks));
 
 			collectLinks(document.getElementsByTagName('*'), IS_LINKS);
-			// addLink(links[0].link, IS_WAKES);
 
 			new MutationObserver(() => {
 				clearLinks(IS_LINKS);
 				collectLinks(document.getElementsByTagName('*'), IS_LINKS);
 			}).observe(document.body, { childList: true, subtree: true });
-			// 引数をaxisだけにしたい
+
 			const canSee = (link, direction) => {
 				const border = getBorder(link, direction.axis);
 				const target = direction.axis === HORIZONTAL_MOVE ? window.innerHeight : window.innerWidth;
@@ -180,7 +177,6 @@
 			const getCloser = (first, second, current, direction) =>
 				getDegree(first, current, direction) > getDegree(second, current, direction) ? second : first;
 
-			// TODO:
 			const decideNext = (first, second, current, direction) => {
 				const set = [first, second];
 				const closer = getCloser(first, second, current, direction);
@@ -188,15 +184,18 @@
 				if (set.every(link => overlapped(link, current, direction.axis))) {
 					return nearer;
 				} else if (set.some(link => overlapped(link, current, direction.axis))) {
-					return set.find(link => overlapped(link, current, direction.axis));
+					const overlappedItem = set.find(link => overlapped(link, current, direction.axis));
+					const anotherItem = set.find(link => link !== overlappedItem);
+					if (overlapped(anotherItem, overlappedItem, direction.axis)) {
+						return nearer;
+					}
+					return overlappedItem;
 				} else {
-					//if (closer === nearer || overlapped(first, second, direction.axis)) {
-					//	return nearer;
-					//} else if (overlapped(first, second, !direction.axis)) {
-					//	return getNearer(first, second, current, axisReversed(direction));
-					//}
-					//return closer;
-					return nearer;
+					if (closer === nearer || overlapped(first, second, direction.axis)) {
+						return nearer;
+					} else {
+						return getNearer(first, second, current, axisReversed(direction));
+					}
 				}
 			};
 
