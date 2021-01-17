@@ -67,6 +67,7 @@
 
 			let links = [];
 			let wakes = [];
+			let lastAxis;
 
 			const getCenter = link => {
 				const rect = link.getBoundingClientRect();
@@ -177,12 +178,34 @@
 			const getCloser = (first, second, current, direction) =>
 				getDegree(first, current, direction) > getDegree(second, current, direction) ? second : first;
 
+			const traceWakes = (first, second, axis) => {
+				if (wakes.length < 2) {
+					return first;
+				}
+				const firstPosition = getPartOfPosition(first, !axis);
+				const secondPosition = getPartOfPosition(second, !axis);
+				const wake = getLinks(IS_WAKES);
+				for (let i = wake.length - 2; i >= 0; i--) {
+					const wakePosition = getPartOfPosition(wake[i], !axis);
+					if (Math.abs(firstPosition - wakePosition) > Math.abs(secondPosition - wakePosition)) {
+						return second;
+					} else if (Math.abs(firstPosition - wakePosition) < Math.abs(secondPosition - wakePosition)) {
+						return first;
+					}
+				}
+				return first;
+			};
+
 			const decideNext = (first, second, current, direction) => {
 				const set = [first, second];
 				const closer = getCloser(first, second, current, direction);
 				const nearer = getNearer(first, second, current, direction);
 				if (set.every(link => overlapped(link, current, direction.axis))) {
-					return nearer;
+					if (overlapped(first, second, direction.axis)) {
+						return nearer;
+					} else {
+						return traceWakes(first, second, direction.axis);
+					}
 				} else if (set.some(link => overlapped(link, current, direction.axis))) {
 					const overlappedItem = set.find(link => overlapped(link, current, direction.axis));
 					const anotherItem = set.find(link => link !== overlappedItem);
@@ -194,17 +217,19 @@
 					if (closer === nearer || overlapped(first, second, direction.axis)) {
 						return nearer;
 					} else {
-						return getNearer(first, second, current, axisReversed(direction));
+						return traceWakes(first, second, direction.axis);
 					}
 				}
 			};
 
 			const getCurrentLink = () => {
 				const current = document.activeElement;
+				if (current !== wakes[wakes.length - 1]) {
+					clearLinks(IS_WAKES);
+				}
 				if (isTarget(current) && canSeeBoth(current)) {
 					return getPositionedItem(current);
 				} else {
-					clearLinks(IS_WAKES);
 					link = { x: window.pageXOffset, y: window.pageYOffset };
 					return getLinks(IS_LINKS).reduce((now, another) => {
 						if (getDistance(link, now) > getDistance(link, another)) {
@@ -218,6 +243,11 @@
 
 			const navigate = direction => {
 				const current = getCurrentLink();
+				if (direction.axis !== lastAxis && wakes.length > 1) {
+					const last = wakes.slice(-2);
+					clearLinks(IS_WAKES);
+					last.forEach(w => addLink(w, IS_WAKES));
+				}
 				const candidates = getLinks(IS_LINKS)
 					.filter(link => Math.sign(getPartOfPosition(link, direction.axis) - getPartOfPosition(current, direction.axis))
 						=== direction.move
@@ -232,6 +262,7 @@
 					return;
 				} else {
 					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction));
+					lastAxis = direction.axis;
 					addLink(target.link, IS_WAKES);
 					focus(target.link);
 				}
