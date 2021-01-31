@@ -67,12 +67,8 @@
 
 			let links = [];
 			let wakes = [];
+			let temporarySet = new Set();
 			let lastAxis;
-
-			const getCenter = link => {
-				const rect = link.getBoundingClientRect();
-				return { x: rect.left + (rect.width) / 2, y: rect.top + (rect.height) / 2 };
-			};
 
 			const enabled = link => {
 				if (!link) {
@@ -86,12 +82,36 @@
 					return false;
 				}
 				return enabled(link.parentElement);
-			}
+			};
 
-			const getPositionedItem = link => {
-				const center = getCenter(link);
-				return { link: link, x: center.x + window.pageXOffset, y: center.y + window.pageYOffset };
-			}
+			const addPosition = link => {
+				const rect = link.getBoundingClientRect();
+				return {
+					link: link,
+					x: rect.left + rect.width / 2 + window.pageXOffset,
+					y: rect.top + rect.height / 2 + window.pageYOffset
+				};
+			};
+
+			const getPart = (link, axis) => {
+				if (axis === VERTICAL_MOVE) {
+					return link.y;
+				} else {
+					return link.x;
+				}
+			};
+
+			const getBorder = (link, axis, move) => {
+				const rect = link.getBoundingClientRect();
+				if (move !== -1) {
+					move = 1;
+				}
+				if (axis === VERTICAL_MOVE) {
+					return move + 1 ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
+				} else {
+					return move + 1 ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
+				}
+			};
 
 			const targetArray = isLinks => isLinks ? links : wakes;
 
@@ -99,7 +119,7 @@
 
 			const clearLinks = isLinks => targetArray(isLinks).splice(0);
 
-			const getLinks = isLinks => targetArray(isLinks).filter(link => enabled(link)).map(link => getPositionedItem(link));
+			const getLinks = isLinks => targetArray(isLinks).filter(link => isLinks ? enabled(link) : true).map(link => addPosition(link));
 
 			const isTarget = node => (node.nodeName === A_TAG && node.hasAttribute('href'))
 				|| (node.nodeName === INPUT && node.type !== HIDDEN)
@@ -124,36 +144,16 @@
 
 			const canSeeBoth = link => canSee(link, DIRECTION.DOWN) && canSee(link, DIRECTION.RIGHT);
 
-			const getPartOfPosition = (link, axis) => {
-				if (axis === VERTICAL_MOVE) {
-					return link.y;
-				} else {
-					return link.x;
-				}
-			};
-
 			const axisReversed = direction => ({ axis: !direction.axis, move: direction.move });
 
 			const moveReversed = direction => ({ axis: direction.axis, move: -direction.move });
 
 			const bothReversed = direction => moveReversed(axisReversed(direction));
 
-			const getBorder = (link, axis, move) => {
-				const rect = link.getBoundingClientRect();
-				if (move !== -1) {
-					move = 1;
-				}
-				if (axis === VERTICAL_MOVE) {
-					return move + 1 ? { start: rect.left, end: rect.right } : { start: rect.right, end: rect.left };
-				} else {
-					return move + 1 ? { start: rect.top, end: rect.bottom } : { start: rect.bottom, end: rect.top };
-				}
-			};
-
 			const overlapped = (link, current, axis) => {
-				const targetParallel = getBorder(link.link, axis);
-				const currentParallel = getBorder(current.link, axis);
-				return targetParallel.start < currentParallel.end && targetParallel.end > currentParallel.start;
+				const targetBorder = getBorder(link.link, axis);
+				const currentBorder = getBorder(current.link, axis);
+				return targetBorder.start < currentBorder.end && targetBorder.end > currentBorder.start;
 			};
 
 			const getDistance = (source, destination) =>
@@ -162,63 +162,57 @@
 			const getDirectionalDistance = (source, destination, direction) => {
 				const sourceBorder = getBorder(source.link, !direction.axis, direction.move);
 				const destinationBorder = getBorder(destination.link, !direction.axis, direction.move);
-				return Math.abs(destinationBorder.start - sourceBorder.end);
+				return overlapped(destination, source, !direction.axis) ?
+					Math.min(Math.abs(destinationBorder.start - sourceBorder.start), Math.abs(destinationBorder.end - sourceBorder.end)) :
+					Math.abs(destinationBorder.start - sourceBorder.end);
 			};
 
 			const getNearer = (first, second, current, direction) =>
 				getDirectionalDistance(current, first, direction) > getDirectionalDistance(current, second, direction) ? second : first;
 
-			const getDegree = (link, current, direction) => {
-				const x = getDirectionalDistance(current, link, direction);
-				const y = Math.min(getDirectionalDistance(current, link, axisReversed(direction)),
-					getDirectionalDistance(current, link, bothReversed(direction)));
-				return Math.atan2(y, x);
-			};
-
-			const getCloser = (first, second, current, direction) =>
-				getDegree(first, current, direction) > getDegree(second, current, direction) ? second : first;
-
-			const traceWakes = (first, second, axis) => {
+			const traceWakes = (first, second, direction) => {
 				if (wakes.length < 2) {
-					return first;
+					return null;
 				}
-				const firstPosition = getPartOfPosition(first, !axis);
-				const secondPosition = getPartOfPosition(second, !axis);
-				const wake = getLinks(IS_WAKES);
-				for (let i = wake.length - 2; i >= 0; i--) {
-					const wakePosition = getPartOfPosition(wake[i], !axis);
-					if (Math.abs(firstPosition - wakePosition) > Math.abs(secondPosition - wakePosition)) {
+				for (const wake of getLinks(IS_WAKES).reverse().slice(1)) {
+					const firstDistance = getDirectionalDistance(wake, first, axisReversed(direction));
+					const secondDistance = getDirectionalDistance(wake, second, axisReversed(direction));
+					if (firstDistance > secondDistance) {
 						return second;
-					} else if (Math.abs(firstPosition - wakePosition) < Math.abs(secondPosition - wakePosition)) {
+					} else if (firstDistance < secondDistance) {
 						return first;
 					}
 				}
-				return first;
+				return null;
 			};
 
 			const decideNext = (first, second, current, direction) => {
+				let selected;
 				const set = [first, second];
-				const closer = getCloser(first, second, current, direction);
 				const nearer = getNearer(first, second, current, direction);
+				const result = traceWakes(first, second, direction);
 				if (set.every(link => overlapped(link, current, direction.axis))) {
-					if (overlapped(first, second, direction.axis)) {
-						return nearer;
-					} else {
-						return traceWakes(first, second, direction.axis);
-					}
+					selected = !overlapped(first, second, direction.axis) && result ? result : nearer;
+					temporarySet.add(selected);
+					temporarySet.delete(set.find(link => link !== selected));
+					return selected;
 				} else if (set.some(link => overlapped(link, current, direction.axis))) {
-					const overlappedItem = set.find(link => overlapped(link, current, direction.axis));
-					const anotherItem = set.find(link => link !== overlappedItem);
-					if (overlapped(anotherItem, overlappedItem, direction.axis)) {
-						return nearer;
-					}
-					return overlappedItem;
+					selected = set.find(link => overlapped(link, current, direction.axis));
+					temporarySet.add(selected);
+					temporarySet.delete(set.find(link => link !== selected));
+					return selected;
 				} else {
-					if (closer === nearer || overlapped(first, second, direction.axis)) {
-						return nearer;
+					const crossNearer = getNearer(first, second, current, axisReversed(direction));
+					if (overlapped(first, second, !direction.axis)) {
+						selected = crossNearer;
 					} else {
-						return traceWakes(first, second, direction.axis);
+						selected = result ? result : crossNearer;
 					}
+					const opponent = Array.from(temporarySet).find(link =>
+						overlapped(link, selected, direction.axis)
+						&& getNearer(link, selected, current, direction) !== link
+						&& getNearer(link, selected, current, axisReversed(direction)) !== link);
+					return opponent ? opponent : selected;
 				}
 			};
 
@@ -228,7 +222,7 @@
 					clearLinks(IS_WAKES);
 				}
 				if (isTarget(current) && canSeeBoth(current)) {
-					return getPositionedItem(current);
+					return addPosition(current);
 				} else {
 					link = { x: window.pageXOffset, y: window.pageYOffset };
 					return getLinks(IS_LINKS).reduce((now, another) => {
@@ -244,15 +238,15 @@
 			const navigate = direction => {
 				const current = getCurrentLink();
 				if (direction.axis !== lastAxis && wakes.length > 1) {
-					const last = wakes.slice(-2);
+					const last = wakes.slice(-1).pop();
 					clearLinks(IS_WAKES);
-					last.forEach(w => addLink(w, IS_WAKES));
+					addLink(last, IS_WAKES);
 				}
 				const candidates = getLinks(IS_LINKS)
-					.filter(link => Math.sign(getPartOfPosition(link, direction.axis) - getPartOfPosition(current, direction.axis))
+					.filter(link => Math.sign(getPart(link, direction.axis) - getPart(current, direction.axis))
 						=== direction.move
 						&& !overlapped(link, current, !direction.axis)
-						&& canSeeBoth(link.link, direction));
+						&& canSeeBoth(link.link));
 				if (candidates.length === 0) {
 					if (direction.axis === VERTICAL_MOVE) {
 						window.scrollBy(0, window.innerHeight / 2 * direction.move);
@@ -262,6 +256,7 @@
 					return;
 				} else {
 					const target = candidates.reduce((first, second) => decideNext(first, second, current, direction));
+					temporarySet.clear();
 					lastAxis = direction.axis;
 					addLink(target.link, IS_WAKES);
 					focus(target.link);
@@ -313,8 +308,6 @@
 						break;
 				}
 			}, false);
-			document.addEventListener('scroll', () => {
-			});
 		});
 })(document);
 
